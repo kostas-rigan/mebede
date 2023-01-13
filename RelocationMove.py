@@ -24,9 +24,11 @@ class RelocationMove(object):
 def FindBestRelocationMove(self, rm):
         for originRouteIndex in range(0, len(self.sol.routes)):
             rt1: Route = self.sol.routes[originRouteIndex]
+            rt1.sequenceOfNodes.append(self.dummy)
             for originNodeIndex in range(1, len(rt1.sequenceOfNodes) - 1):
                 for targetRouteIndex in range(0, len(self.sol.routes)):
                     rt2: Route = self.sol.routes[targetRouteIndex]
+                    rt2.sequenceOfNodes.append(self.dummy)
                     for targetNodeIndex in range(0, len(rt2.sequenceOfNodes) - 1):
 
                         if originRouteIndex == targetRouteIndex and (
@@ -61,7 +63,8 @@ def FindBestRelocationMove(self, rm):
                         if (moveCost_penalized < rm.moveCost_penalized):
                             self.StoreBestRelocationMove(originRouteIndex, targetRouteIndex, originNodeIndex,
                                                          targetNodeIndex, moveCost_penalized, rm)
-
+                    rt2.sequenceOfNodes.pop()
+            rt1.sequenceOfNodes.pop()
 
 def StoreBestRelocationMove(self, originRouteIndex, targetRouteIndex, originNodeIndex, targetNodeIndex,
                             moveCost_penalized, rm: RelocationMove):
