@@ -8,7 +8,7 @@ from random import randint, randrange, seed, random, shuffle, choice
 class Node:
     """
     Node is actually representing a customer in a VRP. Apart from its id and coordinates, it is also characterised by
-    the demand, time to unload, and for the purposes of tabu search a variable until the iteration this node cannot be
+    the demand, time to unloading_time, and for the purposes of tabu search a variable until the iteration this node cannot be
     used unless it brings a better solution.
     """
 
@@ -18,14 +18,13 @@ class Node:
         self.y = y_cor
         self.demand = dem
         self.unloading_time = un_time
-        self.isTabuTillIterator = -1
 
     def from_line(self, line, sep=','):
         """
         :param line: a single file_line from a text file
         :param sep: separator(aka delimiter) used in that file to divide values(',' in csv files)
         :return: None
-        The nodes' csv file has the following form: id, x, y, demand, unloading_time
+        The nodes' csv file has the following form: id, x, y, demand, unloading_timeing_time
         This method splits the file_line on the delimiter sep and then initializes the node's values
         """
         split_line = line.split(sep)
@@ -44,7 +43,6 @@ class Node:
     def __repr__(self):
         return str(self)
 
-
 class Route:
     """
     Route class represents a route in a VRP. Apart from the sequence of nodes, it holds information about the total
@@ -57,6 +55,7 @@ class Route:
         self.total = 0
         self.cumulative_cost = 0
         self.load = 0
+        self.pen_cum_matrix = []
         self.capacity = cap
 
     def add_node(self, new_node: Node, minimum_cost):
@@ -85,7 +84,13 @@ class Route:
     def __repr__(self):
         return str(self)
 
-
+class Penalize:
+    def __init__(self, rows, matrix):
+        self.distance_matrix_penalized = [[matrix[i][j] for j in range(rows)] for i in range(rows)]
+        self.times_penalized = [[0 for j in range(rows)] for i in range(rows)]
+        self.penalized_n1_ID = -1
+        self.penalized_n2_ID = -1
+        
 class Genome(list):
     """
     Genome class represents a solution of the problem used in a genetic algorithm. Instead of having a list of "nodes",
@@ -222,7 +227,7 @@ class Solution:
 
     def __init__(self, routes: list):
         self.routes = routes
-        self.total_cumulative_cost = sum(r.cumulative_cost for r in routes)
+        self.total_cumulative_cost = float(sum(r.cumulative_cost for r in routes))
 
     def clone_solution(self, depot, capacity):
         """
@@ -239,6 +244,26 @@ class Solution:
         cloned = Solution(cloned_routes)
         return cloned
 
+class RelocationMove():
+    def __init__(self):
+        self.originRoutePosition = None
+        self.targetRoutePosition = None
+        self.originNodePosition = None
+        self.targetNodePosition = None
+        self.costChangeOriginRt = None
+        self.costChangeTargetRt = None
+        self.moveCost = None
+        self.moveCost_penalized = None
+
+    def Initialize(self):
+        self.originRoutePosition = None
+        self.targetRoutePosition = None
+        self.originNodePosition = None
+        self.targetNodePosition = None
+        self.costChangeOriginRt = None
+        self.costChangeTargetRt = None
+        self.moveCost = 10 ** 9
+        self.moveCost_penalized = 10 ** 9
 
 class TwoOptMove:
     """
@@ -252,8 +277,9 @@ class TwoOptMove:
         self.positionOfFirstNode = None
         self.positionOfSecondNode = None
         self.moveCost = None
+        self.moveCost_penalized = None
 
-    def initialize(self):
+    def Initialize(self):
         """
         :return: None
         Initializes the 2-Opt object.
@@ -263,45 +289,32 @@ class TwoOptMove:
         self.positionOfFirstNode = None
         self.positionOfSecondNode = None
         self.moveCost = 10 ** 9
+        self.moveCost_penalized = 10 ** 9
 
+class SwapMove:
+    def __init__(self):
+        self.positionOfFirstRoute = None
+        self.positionOfSecondRoute = None
+        self.positionOfFirstNode = None
+        self.positionOfSecondNode = None
+        self.costChangeFirstRt = None
+        self.costChangeSecondRt = None
+        self.moveCost = None
+        self.moveCost_penalized = None
 
-class Tabu:
-    """
-    A Tabu objects contains the range of iterations in which nodes are tabooed.
-    """
-
-    def __init__(self, minimum, maximum):
-        self.min_tenure = minimum
-        self.max_tenure = maximum
-
-    @staticmethod
-    def move_is_tabu(current_solution: Solution, best_solution: Solution, node: Node, move_cost, iterator, eps=0.001):
-        """
-        :param current_solution: the solution to check if the move is tabooed
-        :param best_solution: the best solution calculated thus far
-        :param node: a Node object to check if it is tabooed
-        :param move_cost: the move's change in cost
-        :param iterator: an integer that represents the iteration Tabu search is at
-        :param eps: a very small number epsilon
-        :return: True if the move is tabooed and False otherwise or if the move leads to a better solution nonetheless
-        """
-        if current_solution.total_cumulative_cost + move_cost < best_solution.total_cumulative_cost - eps:
-            return False
-        return iterator < node.isTabuTillIterator
-
-    def set_tabu(self, tabu_node: Node, iterator):
-        """
-        :param tabu_node: the Node object to be tabooed
-        :param iterator: the iteration Tabu search is at
-        :return: None
-        Assigns a random integer in the range [iterator + min_tenure, iterator + max_tenure] to determine for how many
-        iterations this node will be tabooed.
-        """
-        tabu_node.isTabuTillIterator = iterator + randint(self.min_tenure, self.max_tenure)
+    def Initialize(self):
+        self.positionOfFirstRoute = None
+        self.positionOfSecondRoute = None
+        self.positionOfFirstNode = None
+        self.positionOfSecondNode = None
+        self.costChangeFirstRt = None
+        self.costChangeSecondRt = None
+        self.moveCost = 10 ** 9
+        self.moveCost_penalized = 10 ** 9
 
 
 def read_vrp_problem_info():
-    with open('../Instance.txt') as f:
+    with open('Instance.txt') as f:
         number_of_vehicles = get_int_from_line(f.readline())
         capacity = get_int_from_line(f.readline())
         customers = get_int_from_line(f.readline())
@@ -318,7 +331,7 @@ def read_vrp_problem_info():
 
 
 def write_solution_to_file(solution, number_of_vehicles):
-    with open('../my_solution.txt', 'w') as f:
+    with open('my_solution.txt', 'w') as f:
         f.write(f'Cost:\n{solution.total_cumulative_cost}\n')
         f.write(f'Routes:\n{number_of_vehicles}')
         for route in solution.routes:
@@ -348,12 +361,12 @@ def calculate_euclid(node_from, node_to):
     return sqrt((node_from.x - node_to.x) ** 2 + (node_from.y - node_to.y) ** 2)
 
 
-def calculate_cost_matrix(sequence_of_nodes):
+def calculate_cost_matrix(sequence_of_nodes,rows):
     """
     :param sequence_of_nodes: sequence of customer Nodes
     :return: a List of List objects containing the cost from one node to another for each node
     """
-    matrix = [[0 for _ in range(len(sequence_of_nodes))] for _ in range(len(sequence_of_nodes))]
+    matrix = [[0 for _ in range(rows)] for _ in range(rows)]
     for from_index in range(len(sequence_of_nodes)):
         for to_index in range(from_index + 1, len(sequence_of_nodes)):
             from_n = sequence_of_nodes[from_index]
@@ -416,7 +429,6 @@ def manage_duplicates(pop, mutation_rate, number_of_vehicles, sequence_of_nodes,
         pop[pos] = genome
         unique_genomes.add(tuple(genome))
 
-
 def genetic_algorithm(population_size, sequence_of_nodes, matrix, initial_node, capacity, vehicles, generations,
                       mutation_rate, gene_selection_rate):
     """
@@ -460,7 +472,6 @@ def genetic_algorithm(population_size, sequence_of_nodes, matrix, initial_node, 
         print(f'Generation: {generation}', pop[0].score)
     return pop
 
-
 def clone_route(rt: Route, depot, capacity):
     cloned = Route(depot, capacity)
     cloned.cumulative_cost = rt.cumulative_cost
@@ -468,6 +479,21 @@ def clone_route(rt: Route, depot, capacity):
     cloned.sequenceOfNodes = rt.sequenceOfNodes.copy()
     return cloned
 
+#for relocations- ton xreisimopoiei h eygenia 
+def calculate_sol_cumulative(sol: Solution, matrix):
+    totalSolCost = 0
+    for r in range(0, len(sol.routes)):
+        rt: Route = sol.routes[r]
+        rtCost = 0
+        rtCumCost = 0
+        for n in range(len(rt.sequenceOfNodes) - 2): #an exeis vgalei to dummy otan eisai edw allakse tous deiktes
+            A = rt.sequenceOfNodes[n]
+            B = rt.sequenceOfNodes[n + 1]
+            rtCost += matrix[A.ID][B.ID]
+            rtCumCost += rtCost
+            rtCost += B.unloading_time
+        totalSolCost += rtCumCost
+    return totalSolCost
 
 def calculate_route_cumulative(nodes_sequence, distance_matrix):
     rt_cumulative_cost = 0
@@ -480,6 +506,19 @@ def calculate_route_cumulative(nodes_sequence, distance_matrix):
         tot_time += to_node.unloading_time
     return rt_cumulative_cost
 
+def calculate_pen_cum_matrix(route: Route,pen: Penalize):
+    rt_cumulative_cost = 0
+    tot_time = 0
+    
+    route.pen_cum_matrix = []
+    for i in range(len(route.sequenceOfNodes) - 1):
+        print(i)
+        from_node: Node = route.sequenceOfNodes[i]
+        to_node: Node = route.sequenceOfNodes[i + 1]
+        tot_time += pen.distance_matrix_penalized[from_node.ID][to_node.ID]
+        rt_cumulative_cost += tot_time
+        route.pen_cum_matrix.append(rt_cumulative_cost)
+        tot_time += to_node.unloading_time
 
 def calculate_intra_route_cumulative_change(index_of_node_1, index_of_node_2, route, matrix):
     cost_removed = route.cumulative_cost
@@ -490,7 +529,6 @@ def calculate_intra_route_cumulative_change(index_of_node_1, index_of_node_2, ro
 
     cost_added = calculate_route_cumulative(node_sequence_copy, matrix)
     return cost_added - cost_removed
-
 
 def calculate_inter_route_cumulative_change(index_of_node_1, index_of_node_2, route_1, route_2, matrix):
     cost_removed = route_1.cumulative_cost + route_2.cumulative_cost
@@ -514,7 +552,56 @@ def calculate_inter_route_cumulative_change(index_of_node_1, index_of_node_2, ro
     return cost_added - cost_removed
 
 
-def find_best_two_opt_move(top, sol: Solution, best_sol: Solution, iteration, matrix):
+
+def FindBestRelocationMove(rm, sol: Solution, matrix, pen:Penalize):
+    dummy = Node(101,0,0,0,0)
+    for originRouteIndex in range(0, len(sol.routes)):
+            rt1: Route = sol.routes[originRouteIndex]
+            rt1.sequenceOfNodes.append(dummy)
+            for originNodeIndex in range(1, len(rt1.sequenceOfNodes) - 1):
+                for targetRouteIndex in range(0, len(sol.routes)):
+                    rt2: Route = sol.routes[targetRouteIndex]
+                    rt2.sequenceOfNodes.append(dummy)
+                    for targetNodeIndex in range(0, len(rt2.sequenceOfNodes) - 1):
+
+                        if originRouteIndex == targetRouteIndex and (
+                                targetNodeIndex == originNodeIndex or targetNodeIndex == originNodeIndex - 1):
+                            continue
+
+                        A = rt1.sequenceOfNodes[originNodeIndex - 1]
+                        B = rt1.sequenceOfNodes[originNodeIndex]
+                        C = rt1.sequenceOfNodes[originNodeIndex + 1]
+                        len1 = len(rt1.sequenceOfNodes)
+                        indexC = originNodeIndex + 1
+
+                        F = rt2.sequenceOfNodes[targetNodeIndex]
+                        G = rt2.sequenceOfNodes[targetNodeIndex + 1]
+                        len2 = len(rt2.sequenceOfNodes)
+                        indexG = targetNodeIndex + 1
+
+                        if rt1 != rt2:
+                            if rt2.load + B.demand > rt2.capacity:
+                                continue
+                        print(originNodeIndex)
+                        costRemoved_penalized = (pen.distance_matrix_penalized[A.ID][B.ID] + B.unloading_time + \
+                                                 pen.distance_matrix_penalized[B.ID][C.ID])*(len1-indexC) + \
+                                                 pen.distance_matrix_penalized[F.ID][G.ID]*(len2-indexG) + \
+                                                 rt1.pen_cum_matrix[originNodeIndex]
+                        
+
+                        costAdded_penalized = pen.distance_matrix_penalized[A.ID][C.ID]*(len1 - indexC) +\
+                                    (pen.distance_matrix_penalized[F.ID][B.ID] + B.unloading_time + pen.distance_matrix_penalized[B.ID][G.ID])*(len2-indexG) +\
+                                    + rt2.pen_cum_matrix[targetNodeIndex] + F.unloading_time + pen.distance_matrix_penalized[F.ID][B.ID]
+
+                        moveCost_penalized = costAdded_penalized - costRemoved_penalized
+
+                        if (moveCost_penalized < rm.moveCost_penalized):
+                            StoreBestRelocationMove(originRouteIndex, targetRouteIndex, originNodeIndex,
+                                                         targetNodeIndex, moveCost_penalized, rm)
+                    rt2.sequenceOfNodes.pop()
+            rt1.sequenceOfNodes.pop()
+            
+def FindBestTwoOptMove(top, sol: Solution, matrix, pen : Penalize):
     for index_of_route_1 in range(0, len(sol.routes)):
         route_1: Route = sol.routes[index_of_route_1]
         for index_of_route_2 in range(index_of_route_1, len(sol.routes)):
@@ -524,12 +611,20 @@ def find_best_two_opt_move(top, sol: Solution, best_sol: Solution, iteration, ma
                 if route_1 == route_2:
                     start2 = index_of_node_1 + 2
                 for index_of_node_2 in range(start2, len(route_2.sequenceOfNodes) - 1):
+                    
+                    A = route_1.sequenceOfNodes[index_of_node_1]
+                    B = route_1.sequenceOfNodes[index_of_node_1 + 1]
+                    K = route_2.sequenceOfNodes[index_of_node_2]
+                    L = route_2.sequenceOfNodes[index_of_node_2 + 1]
 
                     if route_1 == route_2:
                         if index_of_node_1 == 0 and index_of_node_2 == len(route_1.sequenceOfNodes) - 2:
                             continue
-                        move_cost = calculate_intra_route_cumulative_change(
-                            index_of_node_1, index_of_node_2, route_1, matrix)
+                        move_cost = calculate_intra_route_cumulative_change(index_of_node_1, index_of_node_2, route_1, matrix)
+                        
+                        costAdded_penalized = pen.distance_matrix_penalized[A.ID][K.ID] + pen.distance_matrix_penalized[B.ID][L.ID]
+                        costRemoved_penalized = pen.distance_matrix_penalized[A.ID][B.ID] + pen.distance_matrix_penalized[K.ID][L.ID]
+                        moveCost_penalized = costAdded_penalized - costRemoved_penalized
                     else:
                         if index_of_node_1 == 0 and index_of_node_2 == 0:
                             continue
@@ -541,17 +636,89 @@ def find_best_two_opt_move(top, sol: Solution, best_sol: Solution, iteration, ma
                             continue
                         move_cost = calculate_inter_route_cumulative_change(index_of_node_1, index_of_node_2, route_1,
                                                                             route_2, matrix)
+                        costAdded_penalized = pen.distance_matrix_penalized[A.ID][L.ID] + pen.distance_matrix_penalized[B.ID][K.ID]
+                        costRemoved_penalized = pen.distance_matrix_penalized[A.ID][B.ID] + pen.distance_matrix_penalized[K.ID][L.ID]
+                        moveCost_penalized = costAdded_penalized - costRemoved_penalized
+                    if moveCost_penalized < top.moveCost_penalized:
+                        StoreBestTwoOptMove(index_of_route_1, index_of_route_2, index_of_node_1, index_of_node_2,
+                                                move_cost,moveCost_penalized, top)
+                
+def FindBestSwapMove(sm, sol: Solution, matrix, pen:Penalize):
+        for firstRouteIndex in range(0, len(sol.routes)):
+            rt1:Route = sol.routes[firstRouteIndex]
+            for secondRouteIndex in range (firstRouteIndex, len(sol.routes)):
+                rt2:Route = sol.routes[secondRouteIndex]
+                for firstNodeIndex in range (1, len(rt1.sequenceOfNodes) - 1):
+                    startOfSecondNodeIndex = 1
+                    if rt1 == rt2:
+                        startOfSecondNodeIndex = firstNodeIndex + 1
+                    for secondNodeIndex in range (startOfSecondNodeIndex, len(rt2.sequenceOfNodes) - 1):
 
-                    if Tabu.move_is_tabu(sol, best_sol, route_1.sequenceOfNodes[index_of_node_1], move_cost,
-                                         iteration) or \
-                            Tabu.move_is_tabu(sol, best_sol, route_2.sequenceOfNodes[index_of_node_2], move_cost,
-                                              iteration):
-                        continue
+                        a1 = rt1.sequenceOfNodes[firstNodeIndex - 1]
+                        b1 = rt1.sequenceOfNodes[firstNodeIndex]
+                        c1 = rt1.sequenceOfNodes[firstNodeIndex + 1]
 
-                    if move_cost < top.moveCost:
-                        store_best_two_opt_move(index_of_route_1, index_of_route_2, index_of_node_1, index_of_node_2,
-                                                move_cost, top)
+                        a2 = rt2.sequenceOfNodes[secondNodeIndex - 1]
+                        b2 = rt2.sequenceOfNodes[secondNodeIndex]
+                        c2 = rt2.sequenceOfNodes[secondNodeIndex + 1]
 
+                        moveCost = None
+                        costChangeFirstRoute = None
+                        costChangeSecondRoute = None
+
+                        if rt1 == rt2:
+                            if firstNodeIndex == secondNodeIndex - 1:
+                                # case of consecutive nodes swap
+                                costRemoved = matrix[a1.ID][b1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + matrix[b1.ID][b2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1) + \
+                                              matrix[b2.ID][c2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-2)
+                                costAdded = matrix[a1.ID][b2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + matrix[b2.ID][b1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1) + \
+                                            matrix[b1.ID][c2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-2)
+                                moveCost = costAdded - costRemoved
+
+                                costRemoved_penalized = pen.distance_matrix_penalized[a1.ID][b1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + pen.distance_matrix_penalized[b1.ID][b2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1) + \
+                                                        pen.distance_matrix_penalized[b2.ID][c2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-2)
+                                costAdded_penalized = pen.distance_matrix_penalized[a1.ID][b2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + pen.distance_matrix_penalized[b2.ID][b1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1) + \
+                                                      pen.distance_matrix_penalized[b1.ID][c2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-2)
+                                moveCost_penalized = costAdded_penalized - costRemoved_penalized
+                            else:
+
+                                costRemoved1 = matrix[a1.ID][b1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + matrix[b1.ID][c1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1)
+                                costAdded1 = matrix[a1.ID][b2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + matrix[b2.ID][c1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1)
+                                costRemoved2 = matrix[a2.ID][b2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex) + matrix[b2.ID][c2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex-1)
+                                costAdded2 = matrix[a2.ID][b1.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex) + matrix[b1.ID][c2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex-1)
+                                moveCost = costAdded1 + costAdded2 - (costRemoved1 + costRemoved2)
+                                
+                                costRemoved1_penalized = pen.distance_matrix_penalized[a1.ID][b1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + pen.distance_matrix_penalized[b1.ID][c1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1)
+                                costAdded1_penalized = pen.distance_matrix_penalized[a1.ID][b2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + pen.distance_matrix_penalized[b2.ID][c1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1)
+                                costRemoved2_penalized = pen.distance_matrix_penalized[a2.ID][b2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex) + pen.distance_matrix_penalized[b2.ID][c2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex-1)
+                                costAdded2_penalized = pen.distance_matrix_penalized[a2.ID][b1.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex) + matrix[b1.ID][c2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex-1)
+                                moveCost_penalized = costAdded1_penalized + costAdded2_penalized - (costRemoved1_penalized + costRemoved2_penalized)
+                        else:
+                            if rt1.load - b1.demand + b2.demand > rt1.capacity:
+                                continue
+                            if rt2.load - b2.demand + b1.demand > rt2.capacity:
+                                continue
+
+                            costRemoved1 = matrix[a1.ID][b1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + matrix[b1.ID][c1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1)
+                            costAdded1 = matrix[a1.ID][b2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + matrix[b2.ID][c1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1)
+                            costRemoved2 = matrix[a2.ID][b2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex) + matrix[b2.ID][c2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex-1)
+                            costAdded2 = matrix[a2.ID][b1.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex) + matrix[b1.ID][c2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex-1)
+                            
+                            costRemoved1_penalized = pen.distance_matrix_penalized[a1.ID][b1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + pen.distance_matrix_penalized[b1.ID][c1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1)
+                            costAdded1_penalized = pen.distance_matrix_penalized[a1.ID][b2.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex) + pen.distance_matrix_penalized[b2.ID][c1.ID]*(len(rt1.sequenceOfNodes)-firstNodeIndex-1)
+                            costRemoved2_penalized = pen.distance_matrix_penalized[a2.ID][b2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex) + pen.distance_matrix_penalized[b2.ID][c2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex-1)
+                            costAdded2_penalized = pen.distance_matrix_penalized[a2.ID][b1.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex) + matrix[b1.ID][c2.ID]*(len(rt2.sequenceOfNodes)-secondNodeIndex-1)
+
+                            costChangeFirstRoute = costAdded1 - costRemoved1
+                            costChangeSecondRoute = costAdded2 - costRemoved2
+
+                            moveCost = costAdded1 + costAdded2 - (costRemoved1 + costRemoved2)
+                            moveCost_penalized = costAdded1_penalized + costAdded2_penalized - (
+                                        costRemoved1_penalized + costRemoved2_penalized)
+
+                        if moveCost_penalized < sm.moveCost_penalized:
+                            StoreBestSwapMove(firstRouteIndex, secondRouteIndex, firstNodeIndex, secondNodeIndex,
+                                                   moveCost, moveCost_penalized, costChangeFirstRoute, costChangeSecondRoute, sm)
 
 def capacity_is_violated(route_1, index_of_node_1, route_2, index_of_node_2):
     load_of_route_1_first_segment = sum(route_1.sequenceOfNodes[i].demand for i in range(0, index_of_node_1 + 1))
@@ -565,16 +732,34 @@ def capacity_is_violated(route_1, index_of_node_1, route_2, index_of_node_2):
 
     return route_1_violated or route_2_violated
 
+def StoreBestRelocationMove( originRouteIndex, targetRouteIndex, originNodeIndex, targetNodeIndex,
+                            moveCost_penalized, rm: RelocationMove):
+    rm.originRoutePosition = originRouteIndex
+    rm.originNodePosition = originNodeIndex
+    rm.targetRoutePosition = targetRouteIndex
+    rm.targetNodePosition = targetNodeIndex
+    rm.moveCost_penalized = moveCost_penalized
 
-def store_best_two_opt_move(index_of_route_1, index_of_route_2, index_of_node_1, index_of_node_2, move_cost, top):
+def StoreBestTwoOptMove(index_of_route_1, index_of_route_2, index_of_node_1, index_of_node_2, move_cost, moveCost_penalized, top):
     top.positionOfFirstRoute = index_of_route_1
     top.positionOfSecondRoute = index_of_route_2
     top.positionOfFirstNode = index_of_node_1
     top.positionOfSecondNode = index_of_node_2
     top.moveCost = move_cost
+    top.moveCost_penalized = moveCost_penalized
 
+def StoreBestSwapMove(firstRouteIndex, secondRouteIndex, firstNodeIndex, secondNodeIndex, moveCost,
+                          moveCost_penalized, costChangeFirstRoute, costChangeSecondRoute, sm):
+        sm.positionOfFirstRoute = firstRouteIndex
+        sm.positionOfSecondRoute = secondRouteIndex
+        sm.positionOfFirstNode = firstNodeIndex
+        sm.positionOfSecondNode = secondNodeIndex
+        sm.costChangeFirstRt = costChangeFirstRoute
+        sm.costChangeSecondRt = costChangeSecondRoute
+        sm.moveCost = moveCost
+        sm.moveCost_penalized = moveCost_penalized
 
-def apply_two_opt_move(top, sol: Solution, tabu: Tabu, iteration, matrix):
+def ApplyTwoOptMove(top, sol: Solution, matrix):
     route_1: Route = sol.routes[top.positionOfFirstRoute]
     route_2: Route = sol.routes[top.positionOfSecondRoute]
     node_1 = route_1.sequenceOfNodes[top.positionOfFirstNode]
@@ -610,14 +795,85 @@ def apply_two_opt_move(top, sol: Solution, tabu: Tabu, iteration, matrix):
         update_route_cost_and_load(route_2, matrix)
 
     sol.total_cumulative_cost += top.moveCost
-    tabu.set_tabu(node_1, iteration)
-    tabu.set_tabu(node_2, iteration)
+    
+def ApplySwapMove(sm, sol):
+        oldCost = sol.total_cumulative_cost
+        rt1 = sol.routes[sm.positionOfFirstRoute]
+        rt2 = sol.routes[sm.positionOfSecondRoute]
+        b1 = rt1.sequenceOfNodes[sm.positionOfFirstNode]
+        b2 = rt2.sequenceOfNodes[sm.positionOfSecondNode]
+        rt1.sequenceOfNodes[sm.positionOfFirstNode] = b2
+        rt2.sequenceOfNodes[sm.positionOfSecondNode] = b1
+
+        if (rt1 == rt2):
+            rt1.cumulative_cost += sm.moveCost
+        else:
+            rt1.cumulative_cost += sm.costChangeFirstRt
+            rt2.cumulative_cost += sm.costChangeSecondRt
+            rt1.load = rt1.load - b1.demand + b2.demand
+            rt2.load = rt2.load + b1.demand - b2.demand
+
+        sol.total_cumulative_cost += sm.moveCost
+
+        newCost = sol.total_cumulative_cost
+        # debuggingOnly
+        if abs((newCost - oldCost) - sm.moveCost) > 0.0001:
+            print('Cost Issue')
+
+def ApplyRelocationMove(sol: Solution, rm: RelocationMove, matrix,pen:Penalize):
+
+    originRt = sol.routes[rm.originRoutePosition]
+    targetRt = sol.routes[rm.targetRoutePosition]
+
+    B = originRt.sequenceOfNodes[rm.originNodePosition]
+
+    if originRt == targetRt:
+        del originRt.sequenceOfNodes[rm.originNodePosition]
+        if (rm.originNodePosition < rm.targetNodePosition):
+            targetRt.sequenceOfNodes.insert(rm.targetNodePosition, B)
+        else:
+            targetRt.sequenceOfNodes.insert(rm.targetNodePosition + 1, B)
+    else:
+        del originRt.sequenceOfNodes[rm.originNodePosition]
+        targetRt.sequenceOfNodes.insert(rm.targetNodePosition + 1, B)
+        originRt.load -= B.demand
+        targetRt.load += B.demand
+
+    calculate_pen_cum_matrix(originRt,pen)
+    calculate_pen_cum_matrix(targetRt,pen)
+    sol.total_cumulative_cost = calculate_sol_cumulative(sol,matrix)
 
 
 def update_route_cost_and_load(route: Route, matrix):
     route.cumulative_cost = calculate_route_cumulative(route.sequenceOfNodes, matrix)
     route.load = sum(node.demand for node in route.sequenceOfNodes)
 
+def penalize_arcs(sol : Solution, matrix, pen : Penalize):
+        # if pen.penalized_n1_ID != -1 and pen.penalized_n2_ID != -1:
+        #     pen.distance_matrix_penalized[pen.penalized_n1_ID][pen.penalized_n2_ID] = matrix[pen.penalized_n1_ID][pen.penalized_n2_ID]
+        #     pen.distance_matrix_penalized[pen.penalized_n2_ID][pen.penalized_n1_ID] = matrix[pen.penalized_n2_ID][pen.penalized_n1_ID]
+        max_criterion = 0
+        pen_1 = -1
+        pen_2 = -1
+        for i in range(len(sol.routes)):
+            rt = sol.routes[i]
+            for j in range(len(rt.sequenceOfNodes) - 1):
+                id1 = rt.sequenceOfNodes[j].ID
+                id2 = rt.sequenceOfNodes[j + 1].ID
+                criterion = matrix[id1][id2] / (1 + pen.times_penalized[id1][id2])
+                if criterion > max_criterion:
+                    max_criterion = criterion
+                    pen_1 = id1
+                    pen_2 = id2
+        pen.times_penalized[pen_1][pen_2] += 1
+        pen.times_penalized[pen_2][pen_1] += 1
+
+        pen_weight = 0.15
+
+        pen.distance_matrix_penalized[pen_1][pen_2] = (1 + pen_weight * pen.times_penalized[pen_1][pen_2]) * matrix[pen_1][pen_2]
+        pen.distance_matrix_penalized[pen_2][pen_1] = (1 + pen_weight * pen.times_penalized[pen_2][pen_1]) * matrix[pen_2][pen_1]
+        pen.penalized_n1_ID = pen_1
+        pen.penalized_n2_ID = pen_2
 
 def calculate_initial_best_solution(population, nodes, depot, capacity, number_of_vehicles, distance_matrix):
     best = None
@@ -629,43 +885,86 @@ def calculate_initial_best_solution(population, nodes, depot, capacity, number_o
     routes = best.create_route_list(nodes, depot, capacity, number_of_vehicles, distance_matrix)
     return Solution(routes)
 
+#-----------------------------------------------------------------------------------------------------------
 
-def tabu_search(initial_solution, tenure_range, iterations, matrix, depot, capacity):
-    """
-    :param initial_solution: the initial solution constructed
-    :param tenure_range: how much will each taboo lasts
-    :param iterations: number of iterations to tabu search
-    :param matrix: cost-distance matrix
-    :param depot: initial node where each route starts from
-    :param capacity: max load of each vehicle
-    :return: the best solution found in the search procedure
-    Implementation of Tabu Search using only 2-Opt Operator
-    """
+def local_search(initial_solution, depot, capacity, matrix, pen: Penalize, number_of_iterations):
+    
     solution = initial_solution.clone_solution(depot, capacity)
     best_solution = initial_solution.clone_solution(depot, capacity)
-    top = TwoOptMove()
-    tabu = Tabu(*tenure_range)  # tuple unpacking
 
-    for iterator in range(iterations):
-        top.initialize()
-        find_best_two_opt_move(top, solution, best_solution, iterator, matrix)
-        apply_two_opt_move(top, solution, tabu, iterator, matrix)
-        if solution.total_cumulative_cost < best_solution.total_cumulative_cost:
-            best_solution = solution.clone_solution(depot, capacity)
-        print(f'Iteration: {iterator}, Solution cost: {solution.total_cumulative_cost},'
-              f' best Solution cost: {best_solution.total_cumulative_cost}')
+    terminationCondition = False
+    localSearchIterator = 0
+
+    rm = RelocationMove()
+    sm = SwapMove()
+    top = TwoOptMove()
+
+    while terminationCondition is False:
+            
+            operator = randint(1,2)
+            
+            top.Initialize()
+            sm.Initialize()
+            #rm.Initialize()
+           
+            # Relocations-UnderConstruction
+            # if operator == 0:
+            #     FindBestRelocationMove(rm,solution,matrix,pen)
+            #     if rm.originRoutePosition is not None:
+            #         if rm.moveCost_penalized < 0:
+            #             ApplyRelocationMove(solution,rm,matrix,pen)
+            #         else:
+            #             penalize_arcs(solution,matrix,pen)
+            #             localSearchIterator = localSearchIterator - 1
+            
+            # Swaps
+            if operator == 1:
+                FindBestSwapMove(sm,solution,matrix,pen)
+                if sm.positionOfFirstRoute is not None:
+                    if sm.moveCost_penalized < 0:
+                        ApplySwapMove(sm,solution)
+                    else:
+                        penalize_arcs(solution,matrix,pen)
+                        localSearchIterator = localSearchIterator - 1
+                        
+            # TwoOpt
+            elif operator == 2:
+                FindBestTwoOptMove(top,solution,matrix,pen)
+                if top.positionOfFirstRoute is not None:
+                    if top.moveCost_penalized < 0:
+                        ApplyTwoOptMove(top,solution,matrix)
+                        
+                    else:
+                        penalize_arcs(solution,matrix,pen)
+                        localSearchIterator = localSearchIterator - 1
+            
+
+            if (solution.total_cumulative_cost < best_solution.total_cumulative_cost):
+                best_solution = solution.clone_solution(depot, capacity)
+                print(f'Iteration: {localSearchIterator}, Solution cost: {solution.total_cumulative_cost},'
+              f' best Solution cost: {best_solution.total_cumulative_cost}'
+              f' Move:  {operator}')
+
+            localSearchIterator = localSearchIterator + 1
+            if localSearchIterator == number_of_iterations:
+                terminationCondition = True
+
     return best_solution
 
 
+#-----------------------------------------------------------------------------------------------------------
+ 
 def main():
     start_time = time.time()
 
     number_of_vehicles, capacity, customers, nodes, depot = read_vrp_problem_info()
+    distance_matrix = calculate_cost_matrix([depot] + nodes,len([depot] + nodes))
+    rows = len(nodes) + 1
+    pen = Penalize(rows,distance_matrix)
+
     seed(5)
     population_size = 1000
-
-    distance_matrix = calculate_cost_matrix([depot] + nodes)
-
+    
     generations = 700
     mutation_rate = 0.5
     gene_selection_rate = 0.3
@@ -675,12 +974,12 @@ def main():
 
     initial_best_solution = calculate_initial_best_solution(population, nodes, depot, capacity,
                                                             number_of_vehicles, distance_matrix)
-    number_of_iterations = 1000
-    tenure_range = (10, 20)
-    best_solution = tabu_search(initial_best_solution, tenure_range, number_of_iterations, distance_matrix,
-                                depot, capacity)
+    
+    number_of_iterations = 5000
+    
+    best_solution = local_search(initial_best_solution, depot, capacity, distance_matrix, pen, number_of_iterations)
+    
     write_solution_to_file(best_solution, number_of_vehicles)
-
     end_time = time.time()
     print(f'time elapsed: {end_time - start_time}')
 
